@@ -1,0 +1,15 @@
+#!/bin/sh
+# Distinção padrão remove-vs-purge do Debian ($1 é o argumento que o apt
+# passa: "remove", "purge", "upgrade", ...) -- recurso nativo do dpkg, não
+# lógica própria: `apt remove` mantém config/dados (reinstalar depois
+# recupera o admin e os endpoints), `apt purge` apaga tudo de propósito.
+set -e
+
+if [ "$1" = "purge" ]; then
+    rm -rf /etc/invariant
+    docker volume rm invariant-appliance_pgdata_appliance invariant-appliance_appliance_data_raw invariant-appliance_appliance_data_demo 2>/dev/null || true
+fi
+
+systemctl daemon-reload 2>/dev/null || true
+
+exit 0

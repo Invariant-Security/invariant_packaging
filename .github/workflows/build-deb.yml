@@ -1,0 +1,28 @@
+# Roda depois das imagens já estarem publicadas (ver publish-image.yml em
+# cada repo invariant_*) -- a tag aqui precisa bater com a tag v<versão>
+# já existente em invariant_api, já que build.sh busca
+# docker-compose.appliance.yml/nginx.appliance.conf de lá por essa tag.
+name: build-deb
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install fpm
+        run: sudo gem install --no-document fpm
+      - name: Build .deb
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          ./build.sh "$VERSION"
+      - name: Upload as release asset
+        uses: softprops/action-gh-release@v2
+        with:
+          files: "*.deb"

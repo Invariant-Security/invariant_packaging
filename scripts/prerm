@@ -1,0 +1,12 @@
+#!/bin/sh
+# Para o stack antes dos arquivos serem removidos -- não apaga dados aqui
+# (isso é postrm, e só em purge). Silencia erro se o serviço já não
+# existir (reinstall/downgrade em cima de uma instalação quebrada).
+set -e
+
+if systemctl is-active --quiet invariant.service 2>/dev/null; then
+    systemctl stop invariant.service || true
+fi
+systemctl disable invariant.service 2>/dev/null || true
+
+exit 0

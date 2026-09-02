@@ -1,0 +1,39 @@
+#!/bin/sh
+# Roda depois de `apt install`/`dpkg -i` colocar os arquivos no lugar
+# (/opt/invariant, /etc/systemd/system/invariant.service). Idempotente de
+# propósito -- reinstalar/atualizar o pacote não deve gerar um
+# INVARIANT_API_SECRET_KEY novo nem apagar o admin já cadastrado (isso
+# invalidaria toda sessão ativa à toa).
+set -e
+
+ENV_FILE=/etc/invariant/.env
+mkdir -p /etc/invariant
+
+if [ ! -f "$ENV_FILE" ]; then
+    SECRET="$(openssl rand -hex 32)"
+    cat > "$ENV_FILE" <<EOF
+INVARIANT_API_SECRET_KEY=$SECRET
+INVARIANT_WEB_PORT=80
+EOF
+    chmod 600 "$ENV_FILE"
+fi
+
+if ! command -v docker >/dev/null 2>&1; then
+    echo "" >&2
+    echo "Invariant precisa do Docker instalado antes de continuar." >&2
+    echo "Veja https://docs.docker.com/engine/install/ -- depois rode:" >&2
+    echo "  systemctl enable --now invariant.service" >&2
+    echo "" >&2
+    exit 1
+fi
+
+systemctl daemon-reload
+systemctl enable --now invariant.service
+
+IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
+echo ""
+echo "Invariant está subindo (isso pode levar um ou dois minutos na primeira vez)."
+echo "Abra http://${IP:-<ip-desta-maquina>}/ no navegador pra terminar a configuração."
+echo ""
+
+exit 0

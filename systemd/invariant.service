@@ -1,0 +1,26 @@
+[Unit]
+Description=Invariant appliance stack
+After=docker.service network-online.target
+Requires=docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/opt/invariant
+EnvironmentFile=/etc/invariant/.env
+# Postgres primeiro, --wait até o healthcheck passar (não é preciso um
+# script de espera à parte -- docker compose já faz isso). Migrations
+# depois, via `run --rm` -- a imagem `api` não roda alembic sozinha no
+# boot (mesmo Dockerfile do resto do projeto, sem CMD de migração
+# embutido), então isso teria que rodar em algum lugar do lado de fora;
+# aqui é o único ponto de entrada de um install .deb, sem operador humano
+# pra rodar `alembic upgrade head` manualmente como acontece hoje em
+# dev/prod.
+ExecStartPre=/usr/bin/docker compose -f docker-compose.appliance.yml --env-file /etc/invariant/.env up -d --wait postgres
+ExecStartPre=/usr/bin/docker compose -f docker-compose.appliance.yml --env-file /etc/invariant/.env run --rm api alembic upgrade head
+ExecStart=/usr/bin/docker compose -f docker-compose.appliance.yml --env-file /etc/invariant/.env up -d --wait
+ExecStop=/usr/bin/docker compose -f docker-compose.appliance.yml --env-file /etc/invariant/.env down
+
+[Install]
+WantedBy=multi-user.target

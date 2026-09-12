@@ -4,19 +4,38 @@
 # propósito -- reinstalar/atualizar o pacote não deve gerar um
 # INVARIANT_API_SECRET_KEY novo nem apagar o admin já cadastrado (isso
 # invalidaria toda sessão ativa à toa).
+#
+# __INVARIANT_VERSION__ é substituído por build.sh no momento do build
+# (não dá pra usar $2 do próprio dpkg aqui -- esse argumento traz a versão
+# ANTERIOR já configurada, não a deste pacote).
 set -e
 
+VERSION="__INVARIANT_VERSION__"
 ENV_FILE=/etc/invariant/.env
 mkdir -p /etc/invariant
+touch "$ENV_FILE"
+chmod 600 "$ENV_FILE"
 
-if [ ! -f "$ENV_FILE" ]; then
-    SECRET="$(openssl rand -hex 32)"
-    cat > "$ENV_FILE" <<EOF
-INVARIANT_API_SECRET_KEY=$SECRET
-INVARIANT_WEB_PORT=80
-EOF
-    chmod 600 "$ENV_FILE"
+set_env_var() {
+    key="$1"
+    val="$2"
+    if grep -q "^${key}=" "$ENV_FILE" 2>/dev/null; then
+        sed -i "s#^${key}=.*#${key}=${val}#" "$ENV_FILE"
+    else
+        echo "${key}=${val}" >> "$ENV_FILE"
+    fi
+}
+
+if ! grep -q '^INVARIANT_API_SECRET_KEY=' "$ENV_FILE"; then
+    set_env_var INVARIANT_API_SECRET_KEY "$(openssl rand -hex 32)"
 fi
+if ! grep -q '^INVARIANT_WEB_PORT=' "$ENV_FILE"; then
+    set_env_var INVARIANT_WEB_PORT 80
+fi
+# Sempre atualizado (não só na primeira instalação) -- numa atualização de
+# versão, precisa apontar pras imagens do pacote que acabou de ser
+# instalado, não ficar preso na versão da primeira instalação.
+set_env_var INVARIANT_VERSION "$VERSION"
 
 if ! command -v docker >/dev/null 2>&1; then
     echo "" >&2
@@ -26,6 +45,22 @@ if ! command -v docker >/dev/null 2>&1; then
     echo "" >&2
     exit 1
 fi
+
+# As 5 imagens do appliance são privadas no ghcr.io (protege a lógica
+# proprietária dos checks CIS de download público) -- precisa de um token
+# de leitura pra puxar, passado no ambiente de quem instala, nunca
+# embutido neste pacote (o .deb é um asset público de release: qualquer
+# segredo empacotado aqui vazaria pra qualquer pessoa que baixasse o
+# arquivo, autenticada ou não).
+if [ -z "${INVARIANT_PULL_TOKEN:-}" ]; then
+    echo "" >&2
+    echo "INVARIANT_PULL_TOKEN não definido -- necessário pra baixar as" >&2
+    echo "imagens do appliance (privadas no ghcr.io). Rode de novo assim:" >&2
+    echo "  sudo INVARIANT_PULL_TOKEN=<token> apt install ./invariant_${VERSION}_amd64.deb" >&2
+    echo "" >&2
+    exit 1
+fi
+echo "$INVARIANT_PULL_TOKEN" | docker login ghcr.io -u invariant-appliance --password-stdin
 
 systemctl daemon-reload
 systemctl enable --now invariant.service

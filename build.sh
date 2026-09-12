@@ -24,6 +24,10 @@ curl -fsSL "${API_RAW_BASE}/docker-compose.appliance.yml" -o "$STAGE/opt/invaria
 curl -fsSL "${API_RAW_BASE}/nginx.appliance.conf" -o "$STAGE/opt/invariant/nginx.appliance.conf"
 cp "$(dirname "$0")/systemd/invariant.service" "$STAGE/etc/systemd/system/invariant.service"
 
+mkdir -p "$STAGE/scripts"
+sed "s/__INVARIANT_VERSION__/${VERSION}/" "$(dirname "$0")/scripts/postinst" > "$STAGE/scripts/postinst"
+chmod 755 "$STAGE/scripts/postinst"
+
 fpm -s dir -t deb \
     -n invariant \
     -v "$VERSION" \
@@ -32,7 +36,7 @@ fpm -s dir -t deb \
     --license proprietary \
     --depends "docker-ce | docker.io" \
     --depends "docker-compose-plugin" \
-    --after-install "$(dirname "$0")/scripts/postinst" \
+    --after-install "$STAGE/scripts/postinst" \
     --before-remove "$(dirname "$0")/scripts/prerm" \
     --after-remove "$(dirname "$0")/scripts/postrm" \
     --deb-no-default-config-files \

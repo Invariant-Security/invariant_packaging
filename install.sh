@@ -203,6 +203,16 @@ if [ "$NEED_COMPOSE" -eq 1 ]; then
     fi
 fi
 
+# As 5 imagens do appliance são privadas no ghcr.io (protege a lógica
+# proprietária dos checks CIS de download público) -- precisa de um token
+# de leitura no ambiente de quem instala. Nunca embutido neste script:
+# install.sh é público (curl direto do GitHub), qualquer segredo aqui
+# vazaria pra qualquer pessoa que o baixasse.
+if [ -z "${INVARIANT_PULL_TOKEN:-}" ]; then
+    abort_missing_dependency "INVARIANT_PULL_TOKEN no ambiente (token de leitura do ghcr.io -- rode com INVARIANT_PULL_TOKEN=<token> antes do comando)"
+fi
+echo "$INVARIANT_PULL_TOKEN" | docker login ghcr.io -u invariant-appliance --password-stdin
+
 # --- instalação -------------------------------------------------------------
 
 log_info ""

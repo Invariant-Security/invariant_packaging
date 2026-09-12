@@ -35,7 +35,11 @@ fi
 # Sempre atualizado (não só na primeira instalação) -- numa atualização de
 # versão, precisa apontar pras imagens do pacote que acabou de ser
 # instalado, não ficar preso na versão da primeira instalação.
-set_env_var INVARIANT_VERSION "$VERSION"
+# docker-compose.appliance.yml's image tags are ${INVARIANT_VERSION:-latest}
+# against the published `v<version>` tag (see publish-image.yml) -- the
+# package's own version string (this file's $VERSION, and the .deb's
+# filename) has no "v" prefix, so it needs adding back here.
+set_env_var INVARIANT_VERSION "v$VERSION"
 
 if ! command -v docker >/dev/null 2>&1; then
     echo "" >&2

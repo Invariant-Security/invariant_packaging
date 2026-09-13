@@ -221,6 +221,8 @@ log_info "Ambiente OK. Instalando em ${INSTALL_DIR}..."
 mkdir -p "$INSTALL_DIR"
 curl -fsSL "${API_RAW_BASE}/docker-compose.appliance.yml" -o "${INSTALL_DIR}/docker-compose.appliance.yml"
 curl -fsSL "${API_RAW_BASE}/nginx.appliance.conf" -o "${INSTALL_DIR}/nginx.appliance.conf"
+curl -fsSL "${API_RAW_BASE}/bootstrap-documents.sh" -o "${INSTALL_DIR}/bootstrap-documents.sh"
+chmod +x "${INSTALL_DIR}/bootstrap-documents.sh"
 
 mkdir -p /etc/invariant
 if [ ! -f "$ENV_FILE" ]; then
@@ -251,6 +253,9 @@ $COMPOSE run --rm api alembic upgrade head
 
 log_info "Subindo o restante da stack..."
 $COMPOSE up -d --wait
+
+log_info "Carregando benchmarks CIS padrão (pode levar 1-2 minutos na primeira vez)..."
+INVARIANT_WEB_PORT="$WEB_PORT" "${INSTALL_DIR}/bootstrap-documents.sh" || true
 
 IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
 log_info ""

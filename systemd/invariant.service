@@ -20,6 +20,10 @@ EnvironmentFile=/etc/invariant/.env
 ExecStartPre=/usr/bin/docker compose -f docker-compose.appliance.yml --env-file /etc/invariant/.env up -d --wait postgres
 ExecStartPre=/usr/bin/docker compose -f docker-compose.appliance.yml --env-file /etc/invariant/.env run --rm api alembic upgrade head
 ExecStart=/usr/bin/docker compose -f docker-compose.appliance.yml --env-file /etc/invariant/.env up -d --wait
+# "-" ignora o exit code -- um benchmark que não baixou (rede instável, site
+# fora do ar) não pode marcar a unit inteira como failed; ver
+# bootstrap-documents.sh, que já trata isso internamente por documento.
+ExecStartPost=-/opt/invariant/bootstrap-documents.sh
 ExecStop=/usr/bin/docker compose -f docker-compose.appliance.yml --env-file /etc/invariant/.env down
 
 [Install]

@@ -22,6 +22,8 @@ mkdir -p "$STAGE/opt/invariant" "$STAGE/etc/systemd/system"
 
 curl -fsSL "${API_RAW_BASE}/docker-compose.appliance.yml" -o "$STAGE/opt/invariant/docker-compose.appliance.yml"
 curl -fsSL "${API_RAW_BASE}/nginx.appliance.conf" -o "$STAGE/opt/invariant/nginx.appliance.conf"
+curl -fsSL "${API_RAW_BASE}/bootstrap-documents.sh" -o "$STAGE/opt/invariant/bootstrap-documents.sh"
+chmod 755 "$STAGE/opt/invariant/bootstrap-documents.sh"
 cp "$(dirname "$0")/systemd/invariant.service" "$STAGE/etc/systemd/system/invariant.service"
 
 mkdir -p "$STAGE/scripts"
@@ -36,6 +38,7 @@ fpm -s dir -t deb \
     --license proprietary \
     --depends "docker-ce | docker.io" \
     --depends "docker-compose-plugin" \
+    --depends "curl" \
     --after-install "$STAGE/scripts/postinst" \
     --before-remove "$(dirname "$0")/scripts/prerm" \
     --after-remove "$(dirname "$0")/scripts/postrm" \

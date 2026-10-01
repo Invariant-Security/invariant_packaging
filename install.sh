@@ -142,6 +142,14 @@ else
     NEED_OPENSSL=1
 fi
 
+HTTPS_PORT="${INVARIANT_HTTPS_PORT:-443}"
+if command -v ss >/dev/null 2>&1 && ss -ltn "( sport = :${HTTPS_PORT} )" | grep -q ":${HTTPS_PORT}"; then
+    log_missing "Porta ${HTTPS_PORT} livre (HTTPS)"
+    ss -ltnp "( sport = :${HTTPS_PORT} )" 2>/dev/null | sed 's/^/  /' || true
+    log_err "Escolha outra porta com INVARIANT_HTTPS_PORT=<porta> e rode de novo."
+    exit 1
+fi
+
 WEB_PORT="${INVARIANT_WEB_PORT:-80}"
 if command -v ss >/dev/null 2>&1 && ss -ltn "( sport = :${WEB_PORT} )" | grep -q ":${WEB_PORT}"; then
     log_missing "Porta ${WEB_PORT} livre"
@@ -223,19 +231,25 @@ curl -fsSL "${API_RAW_BASE}/docker-compose.appliance.yml" -o "${INSTALL_DIR}/doc
 curl -fsSL "${API_RAW_BASE}/nginx.appliance.conf" -o "${INSTALL_DIR}/nginx.appliance.conf"
 curl -fsSL "${API_RAW_BASE}/bootstrap-documents.sh" -o "${INSTALL_DIR}/bootstrap-documents.sh"
 chmod +x "${INSTALL_DIR}/bootstrap-documents.sh"
+curl -fsSL "${API_RAW_BASE}/provision.sh" -o "${INSTALL_DIR}/provision.sh"
+chmod +x "${INSTALL_DIR}/provision.sh"
 
-mkdir -p /etc/invariant
-if [ ! -f "$ENV_FILE" ]; then
-    SECRET="$(openssl rand -hex 32)"
-    cat > "$ENV_FILE" <<EOF
-INVARIANT_API_SECRET_KEY=$SECRET
-INVARIANT_WEB_PORT=$WEB_PORT
-INVARIANT_VERSION=$API_REPO_REF
-EOF
-    chmod 600 "$ENV_FILE"
-else
-    log_info "${ENV_FILE} já existe -- mantendo (reinstalação/atualização, não gera secret novo)."
-fi
+# Segredos separados por função + certificado HTTPS. Mesma regra do .deb:
+# só acrescenta o que falta, nunca troca o que existe -- inclusive num
+# .env de versão anterior (antes, um .env existente era mantido sem ganhar
+# as chaves novas).
+"${INSTALL_DIR}/provision.sh" "$ENV_FILE" /etc/invariant/tls
+
+set_env_var() {
+    if grep -q "^$1=" "$ENV_FILE"; then
+        sed -i "s#^$1=.*#$1=$2#" "$ENV_FILE"
+    else
+        printf '%s=%s\n' "$1" "$2" >> "$ENV_FILE"
+    fi
+}
+set_env_var INVARIANT_WEB_PORT "$WEB_PORT"
+set_env_var INVARIANT_HTTPS_PORT "$HTTPS_PORT"
+set_env_var INVARIANT_VERSION "$API_REPO_REF"
 
 # Exportado pro shell, não só escrito no .env -- garante que a porta
 # validada acima (que pode ter mudado de INVARIANT_WEB_PORT/80 se estava
@@ -243,6 +257,7 @@ fi
 # outro valor (env do processo tem precedência sobre --env-file no
 # `docker compose`).
 export INVARIANT_WEB_PORT="$WEB_PORT"
+export INVARIANT_HTTPS_PORT="$HTTPS_PORT"
 COMPOSE="docker compose -f ${INSTALL_DIR}/docker-compose.appliance.yml --env-file ${ENV_FILE}"
 
 log_info "Subindo postgres..."
@@ -255,12 +270,14 @@ log_info "Subindo o restante da stack..."
 $COMPOSE up -d --wait
 
 log_info "Carregando benchmarks CIS padrão (pode levar 1-2 minutos na primeira vez)..."
-INVARIANT_WEB_PORT="$WEB_PORT" "${INSTALL_DIR}/bootstrap-documents.sh" || true
+INVARIANT_HTTPS_PORT="$HTTPS_PORT" "${INSTALL_DIR}/bootstrap-documents.sh" || true
 
 IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
 log_info ""
 log_info "Invariant está no ar."
-log_info "Abra http://${IP:-<ip-desta-maquina>}:${WEB_PORT}/ no navegador pra terminar a configuração."
+log_info "Abra https://${IP:-<ip-desta-maquina>}:${HTTPS_PORT}/ no navegador pra terminar a configuração."
+log_info "O certificado é autoassinado; confira a impressão digital SHA-256:"
+log_info "  $(openssl x509 -in /etc/invariant/tls/cert.pem -noout -fingerprint -sha256 2>/dev/null | cut -d= -f2)"
 log_info ""
 log_info "Comandos úteis (não há systemd unit neste canal de instalação):"
 log_info "  $COMPOSE ps"

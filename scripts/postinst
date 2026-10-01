@@ -26,11 +26,15 @@ set_env_var() {
     fi
 }
 
-if ! grep -q '^INVARIANT_API_SECRET_KEY=' "$ENV_FILE"; then
-    set_env_var INVARIANT_API_SECRET_KEY "$(openssl rand -hex 32)"
-fi
+# Segredos separados por função + certificado HTTPS: provision.sh só
+# acrescenta o que falta, nunca troca o que existe (reinstalar/atualizar não
+# muda sessão, tokens, chave de cobrança, ID da instalação nem certificado).
+/opt/invariant/provision.sh "$ENV_FILE" /etc/invariant/tls
 if ! grep -q '^INVARIANT_WEB_PORT=' "$ENV_FILE"; then
     set_env_var INVARIANT_WEB_PORT 80
+fi
+if ! grep -q '^INVARIANT_HTTPS_PORT=' "$ENV_FILE"; then
+    set_env_var INVARIANT_HTTPS_PORT 443
 fi
 # Sempre atualizado (não só na primeira instalação) -- numa atualização de
 # versão, precisa apontar pras imagens do pacote que acabou de ser
@@ -70,9 +74,13 @@ systemctl daemon-reload
 systemctl enable --now invariant.service
 
 IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
+HTTPS_PORT="$(grep '^INVARIANT_HTTPS_PORT=' "$ENV_FILE" | cut -d= -f2)"
+FINGERPRINT="$(openssl x509 -in /etc/invariant/tls/cert.pem -noout -fingerprint -sha256 2>/dev/null | cut -d= -f2)"
 echo ""
 echo "Invariant está subindo (isso pode levar um ou dois minutos na primeira vez)."
-echo "Abra http://${IP:-<ip-desta-maquina>}/ no navegador pra terminar a configuração."
+echo "Abra https://${IP:-<ip-desta-maquina>}:${HTTPS_PORT:-443}/ no navegador pra terminar a configuração."
+echo "O certificado é autoassinado; confira a impressão digital SHA-256:"
+echo "  ${FINGERPRINT:-<indisponível>}"
 echo ""
 
 exit 0

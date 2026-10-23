@@ -6,7 +6,7 @@
 set -e
 
 if [ "$1" = "purge" ]; then
-    rm -rf /etc/invariant
+    rm -rf /etc/invariant /opt/invariant
     docker volume rm invariant-appliance_pgdata_appliance invariant-appliance_appliance_data_raw invariant-appliance_appliance_data_demo 2>/dev/null || true
 fi
 

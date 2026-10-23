@@ -15,17 +15,22 @@ qualquer um dos dois fazer sentido:
   Sobrevive a reboot só via `restart: unless-stopped` no compose (sem
   unit de systemd nesse canal).
 
-Os dois buscam `docker-compose.appliance.yml`/`nginx.appliance.conf` já
-publicados na tag `v<versão>` do `invariant_api`.
+Os dois precisam de `INVARIANT_PULL_TOKEN` (token de leitura de pacotes do
+ghcr.io) e extraem `docker-compose.appliance.yml`, `nginx.appliance.conf`,
+`provision.sh` e `bootstrap-documents.sh` da imagem
+`ghcr.io/invariant-security/invariant-api:v<versão>`, em
+`/opt/invariant/appliance/` (o repo do api é privado; nada é baixado dele
+por raw ou pela API do GitHub).
 
 ## `install.sh` / `uninstall.sh`
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Invariant-Security/invariant_packaging/main/install.sh | sudo bash -s -- 0.1.5
+curl -fsSL https://raw.githubusercontent.com/Invariant-Security/invariant_packaging/main/install.sh | sudo INVARIANT_PULL_TOKEN=<token> bash -s -- 0.1.5
 ```
 
-Sem argumento de versão, resolve a tag mais recente de `invariant_api`
-via API pública do GitHub. `INVARIANT_ASSUME_YES=1` pula os prompts
+Sem argumento de versão, resolve a release mais recente (tags `vX.Y.Z`,
+ignora `dev-*`/`main-*`/`latest`) pelo registry do ghcr.io com o mesmo
+token. `INVARIANT_ASSUME_YES=1` pula os prompts
 (automação); `INVARIANT_WEB_PORT=<porta>` muda a porta padrão (`80`).
 
 Pra remover: `uninstall.sh` (mesma pasta) para o stack mantendo config e
@@ -35,7 +40,8 @@ interativa (ou `INVARIANT_ASSUME_PURGE=1`).
 
 ## O que o `.deb` instala
 
-- `/opt/invariant/docker-compose.appliance.yml` + `nginx.appliance.conf`
+- `/opt/invariant/{docker-compose.appliance.yml,nginx.appliance.conf,provision.sh,bootstrap-documents.sh}`
+  (extraídos pelo `postinst` da imagem do api, não vêm dentro do `.deb`)
 - `/etc/systemd/system/invariant.service`
 - `/etc/invariant/.env` (gerado pelo `postinst`, só na primeira instalação
   -- `INVARIANT_API_SECRET_KEY` aleatório + `INVARIANT_WEB_PORT=80`)
@@ -66,7 +72,7 @@ consentimento explícito na hora, em vez de instalar calado.
 
 ```bash
 gem install --no-document fpm
-./build.sh 0.2.0   # precisa existir a tag v0.2.0 em invariant_api
+./build.sh 0.2.0   # só empacota; a imagem v0.2.0 do api é usada na instalação
 ```
 
 ## `.exe` (Windows) -- não existe ainda

@@ -1,7 +1,7 @@
 # Roda depois das imagens já estarem publicadas (ver publish-image.yml em
 # cada repo invariant_*) -- a tag aqui precisa bater com a tag v<versão>
-# já existente em invariant_api, já que build.sh busca
-# docker-compose.appliance.yml/nginx.appliance.conf de lá por essa tag.
+# da imagem do invariant_api: o postinst do .deb extrai dela, na
+# instalação, os arquivos do appliance (o build não busca nada do api).
 name: build-deb
 
 on:

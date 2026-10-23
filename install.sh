@@ -6,14 +6,14 @@
 # dependência faltante, e só instala depois de confirmado. Não builda
 # nenhuma imagem Docker -- puxa as mesmas imagens publicadas por tag que
 # o .deb usa (ver .github/workflows/publish-image.yml de cada repo
-# invariant_*), e busca docker-compose.appliance.yml/nginx.appliance.conf
-# de invariant_api na mesma tag, igual build.sh já faz.
+# invariant_*), e extrai docker-compose.appliance.yml, nginx.appliance.conf,
+# provision.sh e bootstrap-documents.sh da imagem do invariant_api na mesma
+# tag (/opt/invariant/appliance/) -- o repo do api é privado.
 #
 # Uso:
-#   curl -fsSL <raw-url-deste-arquivo> | sudo bash -s -- 0.1.5
-# Ou, sem argumento, resolve a tag mais recente de invariant_api via API
-# pública do GitHub (sem autenticação -- suficiente pro volume esperado
-# de instalações; se isso virar gargalo real, é hora de repensar).
+#   curl -fsSL <raw-url-deste-arquivo> | sudo INVARIANT_PULL_TOKEN=<token> bash -s -- 0.1.5
+# Ou, sem argumento, resolve a release mais recente (tags vX.Y.Z) pelo
+# registry do ghcr.io com o mesmo INVARIANT_PULL_TOKEN.
 #
 # INVARIANT_ASSUME_YES=1 pula todos os prompts (assume Y) -- necessário
 # pra automação, já que `curl URL | bash` consome o stdin do pipe com o
@@ -21,7 +21,8 @@
 # explicitamente, não do stdin padrão.
 set -euo pipefail
 
-API_REPO="Invariant-Security/invariant_api"
+API_IMAGE_PATH="invariant-security/invariant-api"
+API_IMAGE="ghcr.io/${API_IMAGE_PATH}"
 ENV_FILE=/etc/invariant/.env
 INSTALL_DIR=/opt/invariant
 ASSUME_YES="${INVARIANT_ASSUME_YES:-0}"
@@ -88,23 +89,7 @@ case "${ID:-}" in
         ;;
 esac
 
-# --- resolve versão -------------------------------------------------------
-
 VERSION="${1:-}"
-if [ -z "$VERSION" ]; then
-    log_info "Nenhuma versão informada, resolvendo a tag mais recente de ${API_REPO}..."
-    LATEST_TAG="$(curl -fsSL "https://api.github.com/repos/${API_REPO}/tags" | grep -m1 '"name"' | cut -d'"' -f4 || true)"
-    if [ -z "$LATEST_TAG" ]; then
-        log_err "Não consegui resolver a versão automaticamente."
-        log_err "Uso: install.sh <versão, ex. 0.1.5>"
-        exit 1
-    fi
-    VERSION="${LATEST_TAG#v}"
-fi
-API_REPO_REF="v${VERSION}"
-API_RAW_BASE="https://raw.githubusercontent.com/${API_REPO}/${API_REPO_REF}"
-log_info "Instalando Invariant appliance ${API_REPO_REF}"
-log_info ""
 
 # --- validação de ambiente -------------------------------------------------
 
@@ -221,18 +206,61 @@ if [ -z "${INVARIANT_PULL_TOKEN:-}" ]; then
 fi
 echo "$INVARIANT_PULL_TOKEN" | docker login ghcr.io -u invariant-appliance --password-stdin
 
+# >>> extract_appliance (cópia em scripts/postinst e install.sh; tests/extract_appliance.sh testa as duas)
+# Os 4 arquivos do appliance viajam dentro da imagem do invariant_api
+# (contrato: /opt/invariant/appliance/), pra não depender do repo ser público.
+# Exige `docker login ghcr.io` feito. `docker create` puxa a imagem se faltar.
+extract_appliance() {
+    _img="$1"; _dest="$2"; _rc=0
+    _cid="$(docker create "$_img")" || return 1
+    mkdir -p "$_dest"
+    docker cp "$_cid:/opt/invariant/appliance/." "$_dest/" || _rc=1
+    docker rm "$_cid" >/dev/null 2>&1 || true
+    [ "$_rc" -eq 0 ] || return 1
+    for _f in docker-compose.appliance.yml nginx.appliance.conf provision.sh bootstrap-documents.sh; do
+        [ -s "$_dest/$_f" ] || { echo "faltando $_f em /opt/invariant/appliance/ da imagem $_img" >&2; return 1; }
+    done
+    chmod 755 "$_dest/provision.sh" "$_dest/bootstrap-documents.sh"
+}
+# <<< extract_appliance
+
+# Última release (vX.Y.Z, sem dev-*/main-*/latest) pelo registry, mesmo token.
+latest_release_tag() {
+    _tok="$(printf 'user = "invariant-appliance:%s"\n' "$INVARIANT_PULL_TOKEN" \
+        | curl -fsSL -K - \
+        "https://ghcr.io/token?service=ghcr.io&scope=repository:${API_IMAGE_PATH}:pull" \
+        | grep -o '"token":"[^"]*"' | cut -d'"' -f4)" || return 1
+    [ -n "$_tok" ] || return 1
+    # credenciais via stdin (-K -): token/bearer fora do argv, invisíveis no ps
+    printf 'header = "Authorization: Bearer %s"\n' "$_tok" \
+        | curl -fsSL -K - \
+        "https://ghcr.io/v2/${API_IMAGE_PATH}/tags/list?n=1000" \
+        | grep -oE '"v[0-9]+\.[0-9]+\.[0-9]+"' | tr -d '"' | sort -V | tail -1
+}
+
+if [ -z "$VERSION" ]; then
+    log_info "Nenhuma versão informada, resolvendo a release mais recente em ${API_IMAGE}..."
+    LATEST_TAG="$(latest_release_tag 2>/dev/null || true)"
+    if [ -z "$LATEST_TAG" ]; then
+        log_err "Não consegui resolver a versão automaticamente."
+        log_err "Uso: install.sh <versão, ex. 0.1.5>"
+        exit 1
+    fi
+    VERSION="${LATEST_TAG#v}"
+fi
+API_REPO_REF="v${VERSION}"
+log_info "Instalando Invariant appliance ${API_REPO_REF}"
+
 # --- instalação -------------------------------------------------------------
 
 log_info ""
 log_info "Ambiente OK. Instalando em ${INSTALL_DIR}..."
 
-mkdir -p "$INSTALL_DIR"
-curl -fsSL "${API_RAW_BASE}/docker-compose.appliance.yml" -o "${INSTALL_DIR}/docker-compose.appliance.yml"
-curl -fsSL "${API_RAW_BASE}/nginx.appliance.conf" -o "${INSTALL_DIR}/nginx.appliance.conf"
-curl -fsSL "${API_RAW_BASE}/bootstrap-documents.sh" -o "${INSTALL_DIR}/bootstrap-documents.sh"
-chmod +x "${INSTALL_DIR}/bootstrap-documents.sh"
-curl -fsSL "${API_RAW_BASE}/provision.sh" -o "${INSTALL_DIR}/provision.sh"
-chmod +x "${INSTALL_DIR}/provision.sh"
+extract_appliance "${API_IMAGE}:${API_REPO_REF}" "$INSTALL_DIR" || {
+    log_err "Não consegui extrair os arquivos do appliance da imagem ${API_IMAGE}:${API_REPO_REF}."
+    log_err "Confira a versão e o INVARIANT_PULL_TOKEN."
+    exit 1
+}
 
 # Segredos separados por função + certificado HTTPS. Mesma regra do .deb:
 # só acrescenta o que falta, nunca troca o que existe -- inclusive num

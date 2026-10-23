@@ -1,6 +1,7 @@
 # Testa os scripts de instalação a cada push: o postinst real roda duas
 # vezes num Debian limpo e não pode mudar segredo nem certificado. Usa o
-# provision.sh do invariant_api (o mesmo que o build.sh empacota).
+# stub de docker + provision.sh de fixture (o api é privado e os arquivos
+# do appliance vêm da imagem); a extração tem teste próprio.
 name: ci
 
 on:
@@ -14,12 +15,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/checkout@v4
-        with:
-          repository: Invariant-Security/invariant_api
-          # provision.sh evolui na branch dev do api; o .deb de cada versão
-          # empacota o da tag correspondente (ver build.sh).
-          ref: dev
-          path: _api
       - run: bash -n install.sh && sh -n scripts/postinst && bash -n build.sh
-      - run: tests/postinst_preserves_secrets.sh _api/provision.sh
+      - run: tests/postinst_preserves_secrets.sh
+      - run: tests/extract_appliance.sh

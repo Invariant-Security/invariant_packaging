@@ -82,3 +82,12 @@ detectar/exigir Docker Desktop + WSL2 como pré-requisito (uma dependência
 de vários GB fora do controle do Invariant, com termos de licença próprios
 pra empresas maiores) antes de conseguir rodar o mesmo `docker compose up
 -d`. Fricção real, documentada aqui de propósito -- não implementada.
+
+## Contribuir
+
+Contribuições são bem-vindas sob DCO (`git commit -s`), sem CLA. Ver
+[CONTRIBUTING.md](CONTRIBUTING.md).
+
+## Licença
+
+[Apache License 2.0](LICENSE).

@@ -226,11 +226,14 @@ extract_appliance() {
 
 # Última release (vX.Y.Z, sem dev-*/main-*/latest) pelo registry, mesmo token.
 latest_release_tag() {
-    _tok="$(curl -fsSL -u "invariant-appliance:${INVARIANT_PULL_TOKEN}" \
+    _tok="$(printf 'user = "invariant-appliance:%s"\n' "$INVARIANT_PULL_TOKEN" \
+        | curl -fsSL -K - \
         "https://ghcr.io/token?service=ghcr.io&scope=repository:${API_IMAGE_PATH}:pull" \
         | grep -o '"token":"[^"]*"' | cut -d'"' -f4)" || return 1
     [ -n "$_tok" ] || return 1
-    curl -fsSL -H "Authorization: Bearer ${_tok}" \
+    # credenciais via stdin (-K -): token/bearer fora do argv, invisíveis no ps
+    printf 'header = "Authorization: Bearer %s"\n' "$_tok" \
+        | curl -fsSL -K - \
         "https://ghcr.io/v2/${API_IMAGE_PATH}/tags/list?n=1000" \
         | grep -oE '"v[0-9]+\.[0-9]+\.[0-9]+"' | tr -d '"' | sort -V | tail -1
 }
